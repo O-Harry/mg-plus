@@ -1,0 +1,105 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
+  html {
+    overscroll-behavior-y: none;
+  }
+
+  body {
+    @apply m-0 bg-slate-50 font-sans text-base text-slate-800 antialiased;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior-y: none;
+  }
+
+  button,
+  input,
+  select {
+    font: inherit;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg bg-mg-primary px-4 py-3 font-semibold text-white transition active:scale-[0.98];
+  }
+
+  .btn-accent {
+    @apply inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg bg-mg-accent px-4 py-3 font-semibold text-white transition active:scale-[0.98];
+  }
+}
+
+@layer utilities {
+  .animate-fade-in {
+    animation: mg-fade-in 0.25s ease-out;
+  }
+}
+
+/* タッチしやすいレンジスライダー */
+.touch-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 36px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.touch-slider:focus {
+  outline: none;
+}
+
+.touch-slider::-webkit-slider-runnable-track {
+  height: 10px;
+  border-radius: 9999px;
+  background: #e2e8f0;
+}
+
+.touch-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 28px;
+  height: 28px;
+  margin-top: -9px;
+  border-radius: 9999px;
+  background: #f57c00;
+  border: 3px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+
+.touch-slider::-moz-range-track {
+  height: 10px;
+  border-radius: 9999px;
+  background: #e2e8f0;
+}
+
+.touch-slider::-moz-range-thumb {
+  width: 28px;
+  height: 28px;
+  border-radius: 9999px;
+  background: #f57c00;
+  border: 3px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+
+.touch-slider:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+@keyframes mg-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
