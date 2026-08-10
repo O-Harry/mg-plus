@@ -22,14 +22,16 @@ const samplePl: PL = {
 
 describe('calculateSTRAC', () => {
   it('P/Q/V/M と MQ/F/G を計算する', () => {
-    const strac = calculateSTRAC(samplePl, 200, 8, 5, 100);
-    expect(strac.P).toBe(8);
+    const P = CONSTANTS.BASE_PRICE;
+    const Q = 200;
+    const strac = calculateSTRAC(samplePl, Q, P, 5, 100);
+    expect(strac.P).toBe(P);
     expect(strac.V).toBe(CONSTANTS.MATERIAL_COST_PER_UNIT);
-    expect(strac.M).toBe(5);
-    expect(strac.Q).toBe(200);
-    expect(strac.PQ).toBe(1600);
-    expect(strac.VQ).toBe(600);
-    expect(strac.MQ).toBe(1000);
+    expect(strac.M).toBe(P - CONSTANTS.MATERIAL_COST_PER_UNIT);
+    expect(strac.Q).toBe(Q);
+    expect(strac.PQ).toBe(P * Q);
+    expect(strac.VQ).toBe(CONSTANTS.MATERIAL_COST_PER_UNIT * Q);
+    expect(strac.MQ).toBe(strac.PQ - strac.VQ);
     expect(strac.fixedCostBreakdown.labor).toBe(
       5 * CONSTANTS.EMPLOYEE_SALARY_PER_TURN,
     );
@@ -40,7 +42,7 @@ describe('calculateSTRAC', () => {
 
 describe('calculateBEP', () => {
   it('損益分岐点比率を算出する', () => {
-    const strac = calculateSTRAC(samplePl, 200, 8, 5, 100);
+    const strac = calculateSTRAC(samplePl, 200, CONSTANTS.BASE_PRICE, 5, 100);
     const bep = calculateBEP(strac);
     expect(bep.bepRevenue).toBeGreaterThan(0);
     expect(bep.bepRatio).toBeGreaterThan(0);
@@ -50,7 +52,7 @@ describe('calculateBEP', () => {
 
 describe('simulateWhatIf / evaluateLaborShare', () => {
   it('価格上昇で利益が増える', () => {
-    const strac = calculateSTRAC(samplePl, 200, 8, 5, 100);
+    const strac = calculateSTRAC(samplePl, 200, CONSTANTS.BASE_PRICE, 5, 100);
     const whatif = simulateWhatIf(strac, { priceChange: 0.1 });
     expect(whatif.G).toBeGreaterThan(strac.G);
   });

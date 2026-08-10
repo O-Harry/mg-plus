@@ -8,6 +8,9 @@ type Props = {
   children: ReactNode;
   /** 現在値タップで数値入力を開く */
   onValueClick?: () => void;
+  /** クロピー推奨値（アシスト表示） */
+  recommended?: string;
+  onRecommendationTap?: () => void;
 };
 
 export function DecisionCard({
@@ -17,6 +20,8 @@ export function DecisionCard({
   hint,
   children,
   onValueClick,
+  recommended,
+  onRecommendationTap,
 }: Props) {
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -47,6 +52,17 @@ export function DecisionCard({
           </p>
         )}
       </div>
+      {recommended !== undefined && (
+        <button
+          type="button"
+          onClick={onRecommendationTap}
+          className="mt-2 flex min-h-[36px] items-center gap-1 text-left text-xs text-orange-600 active:text-orange-800"
+        >
+          クロピー推奨:{' '}
+          <span className="font-bold">{recommended}</span>
+          <span className="text-[10px] text-orange-500">(理由を見る)</span>
+        </button>
+      )}
       <div className="mt-3">{children}</div>
       <p className="mt-2 text-right text-xs text-slate-500">{hint}</p>
     </section>

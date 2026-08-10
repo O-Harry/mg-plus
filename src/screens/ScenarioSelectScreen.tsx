@@ -9,16 +9,24 @@ import type { ScenarioId } from '../types/game';
 export function ScenarioSelectScreen() {
   const setView = useGameStore((s) => s.setView);
   const startScenario = useGameStore((s) => s.startScenario);
+  const startDemoPlayback = useGameStore((s) => s.startDemoPlayback);
   const hasInProgressSave = useGameStore((s) => s.hasInProgressSave);
 
-  const pick = (id: ScenarioId) => {
-    if (hasInProgressSave()) {
-      const ok = window.confirm(
-        '進行中のセーブがあります。シナリオを始めると上書きされます。よろしいですか？',
-      );
-      if (!ok) return;
-    }
+  const confirmOverwrite = () => {
+    if (!hasInProgressSave()) return true;
+    return window.confirm(
+      '進行中のセーブがあります。シナリオを始めると上書きされます。よろしいですか？',
+    );
+  };
+
+  const pickPlay = (id: ScenarioId) => {
+    if (!confirmOverwrite()) return;
     startScenario(id);
+  };
+
+  const pickDemo = (id: ScenarioId) => {
+    if (!confirmOverwrite()) return;
+    startDemoPlayback(id);
   };
 
   return (
@@ -30,7 +38,7 @@ export function ScenarioSelectScreen() {
       />
 
       <p className="py-3 text-sm leading-relaxed text-slate-600">
-        実務に近いテーマで、短い期間に集中して経営判断を練習します。
+        実務に近いテーマで、短い期間に集中して経営判断を練習します。初めてなら「お手本を見る」からどうぞ。
       </p>
 
       <div className="flex flex-col gap-3 pb-8">
@@ -63,13 +71,22 @@ export function ScenarioSelectScreen() {
             <p className="mt-2 text-xs text-slate-500">
               目標: {scenario.successCriteria.description}
             </p>
-            <button
-              type="button"
-              className="btn-accent mt-3 w-full text-sm"
-              onClick={() => pick(scenario.id)}
-            >
-              このシナリオを始める
-            </button>
+            <div className="mt-3 flex flex-col gap-2">
+              <button
+                type="button"
+                className="btn-accent w-full text-sm"
+                onClick={() => pickDemo(scenario.id)}
+              >
+                お手本を見る
+              </button>
+              <button
+                type="button"
+                className="btn-primary w-full text-sm"
+                onClick={() => pickPlay(scenario.id)}
+              >
+                自分でプレイ
+              </button>
+            </div>
           </article>
         ))}
       </div>

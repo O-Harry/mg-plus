@@ -68,9 +68,14 @@ function makeTurn(
 describe('diagnosePriceHike', () => {
   it('据置→後から値上げで「判断が遅れた」', () => {
     const turns = [
-      makeTurn(1, { unitPrice: 8, operatingProfit: -500 }),
-      makeTurn(2, { unitPrice: 8, operatingProfit: -200 }),
-      makeTurn(3, { unitPrice: 10, operatingProfit: 100, grossProfit: 500, revenue: 2000 }),
+      makeTurn(1, { unitPrice: 80, operatingProfit: -500 }),
+      makeTurn(2, { unitPrice: 80, operatingProfit: -200 }),
+      makeTurn(3, {
+        unitPrice: 100,
+        operatingProfit: 100,
+        grossProfit: 5_000,
+        revenue: 20_000,
+      }),
     ];
     const d = diagnosePriceHike(turns);
     expect(d.pattern).toBe('値上げの判断が遅れた');
@@ -78,9 +83,9 @@ describe('diagnosePriceHike', () => {
 
   it('ほぼ値上げなしパターン', () => {
     const turns = [
-      makeTurn(1, { unitPrice: 8 }),
-      makeTurn(2, { unitPrice: 8.2 }),
-      makeTurn(3, { unitPrice: 8.1, revenue: 1000, grossProfit: 100 }),
+      makeTurn(1, { unitPrice: 80 }),
+      makeTurn(2, { unitPrice: 82 }),
+      makeTurn(3, { unitPrice: 81, revenue: 10_000, grossProfit: 1_000 }),
     ];
     const d = diagnosePriceHike(turns);
     expect(d.pattern).toBe('値上げをほぼ行わなかった');
@@ -88,13 +93,13 @@ describe('diagnosePriceHike', () => {
 
   it('過剰値上げで需要減', () => {
     const turns = [
-      makeTurn(1, { unitPrice: 11, demandRealized: 80 }),
-      makeTurn(2, { unitPrice: 11.5, demandRealized: 70 }),
+      makeTurn(1, { unitPrice: 110, demandRealized: 80 }),
+      makeTurn(2, { unitPrice: 115, demandRealized: 70 }),
       makeTurn(3, {
-        unitPrice: 12,
+        unitPrice: 120,
         demandRealized: 50,
-        revenue: 600,
-        grossProfit: 300,
+        revenue: 6_000,
+        grossProfit: 3_000,
       }),
     ];
     const d = diagnosePriceHike(turns);

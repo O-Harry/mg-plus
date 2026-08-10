@@ -10,6 +10,7 @@ export type ViewState =
   | 'howto'
   | 'scenarioSelect'
   | 'scenarioBriefing'
+  | 'demoPlayback'
   | 'dashboard'
   | 'decisions'
   | 'result'

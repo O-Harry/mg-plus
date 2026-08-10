@@ -3,9 +3,10 @@ import {
   assertBalanceSheet,
   buildBS,
   companyValueScore,
+  getProductionLimits,
   runTurn,
 } from './calculations';
-import { createInitialState } from './constants';
+import { CONSTANTS, createInitialState } from './constants';
 import type { Decision } from '../types/game';
 
 /** 決定論的RNG (イベントを neutral 寄りに固定) */
@@ -20,15 +21,13 @@ function rngSequence(values: number[]): () => number {
 
 /** 不況を避け、ノイズ中央付近になるシーケンス */
 function stableRng() {
-  // recession check > recessionProb, other event > 0.2 → neutral
-  // demand noise: 0.5 → multiplier 1.0
   return rngSequence([0.99, 0.99, 0.5, 0.5, 0.5, 0.5]);
 }
 
 const baseDecision = (over: Partial<Decision> = {}): Decision => ({
-  materialPurchase: 3_000,
+  materialPurchase: 5_000,
   productionQty: 200,
-  unitPrice: 8,
+  unitPrice: CONSTANTS.BASE_PRICE,
   employeeChange: 0,
   investments: [],
   ...over,
@@ -61,28 +60,45 @@ describe('runTurn / BS integrity', () => {
     expect(result.coachComment.length).toBeGreaterThan(0);
   });
 
-  it('ケース3: 設備投資後も BS が整合し、生産能力が上がる', () => {
-    const state = createInitialState('テスト工業', 'easy');
-    const beforeDebt = state.longTermDebt;
+  it('ケース3: 設備投資で生産能力+30、投資CFで500支出', () => {
+    const state = createInitialState('テスト工業', 'normal');
+    const opts = {
+      event: {
+        type: 'neutral' as const,
+        message: '',
+        demandMultiplier: 1,
+        costMultiplier: 1,
+      },
+      skipPriceVolatility: true,
+      rng: () => 0.5,
+    };
     const { state: next, result } = runTurn(
       state,
       baseDecision({
         materialPurchase: 5_000,
-        productionQty: 250,
+        productionQty: 200,
         investments: ['equipment'],
       }),
-      stableRng(),
+      opts,
     );
 
     assertBalanceSheet(result.bs, 'after equipment');
-    expect(next.equipment).toBe(state.equipment + 30_000);
-    expect(next.longTermDebt).toBe(beforeDebt + 29_500);
-    expect(next.extraProductionCapacity).toBeGreaterThan(0);
+    expect(next.equipment).toBe(state.equipment);
+    expect(next.extraProductionCapacity).toBe(
+      CONSTANTS.EQUIPMENT_BONUS_CAPACITY,
+    );
+    expect(result.cf.investing).toBe(-CONSTANTS.INVESTMENT_COST_EACH);
+
+    const noInv = runTurn(
+      state,
+      baseDecision({ materialPurchase: 5_000, productionQty: 200 }),
+      opts,
+    );
+    expect(next.cash).toBeLessThan(noInv.state.cash);
   });
 
   it('ケース4: 過剰投資で資金ショートするとゲームオーバー', () => {
     const state = createInitialState('ピンチ工業', 'hard');
-    // 現金をほぼ使い切る意思決定を複数回
     let current = state;
     let gameOver = false;
 
@@ -92,7 +108,7 @@ describe('runTurn / BS integrity', () => {
         baseDecision({
           materialPurchase: Math.floor(current.cash * 0.8),
           productionQty: 160,
-          unitPrice: 5,
+          unitPrice: 50,
           investments: ['ad', 'rd', 'equipment'],
           employeeChange: 2,
         }),
@@ -106,7 +122,6 @@ describe('runTurn / BS integrity', () => {
       }
     }
 
-    // hard + 積極投資でショートするか、少なくとも BS は常に整合
     assertBalanceSheet(buildBS(current), 'stress');
     expect(gameOver || current.history.length > 0).toBe(true);
   });
@@ -122,13 +137,16 @@ describe('runTurn / BS integrity', () => {
     let current = createInitialState('完走工業', 'easy');
     for (let i = 0; i < 12; i++) {
       if (current.gameOver) break;
-      const purchase = Math.min(2_500, Math.max(800, Math.floor(current.cash * 0.25)));
+      const purchase = Math.min(
+        8_000,
+        Math.max(3_000, Math.floor(current.cash * 0.2)),
+      );
       const { state: next, result } = runTurn(
         current,
         baseDecision({
           materialPurchase: purchase,
           productionQty: 200,
-          unitPrice: 8,
+          unitPrice: CONSTANTS.BASE_PRICE,
           employeeChange: 0,
           investments: [],
         }),
@@ -140,5 +158,145 @@ describe('runTurn / BS integrity', () => {
     expect(current.gameOver).toBe(false);
     expect(current.history.length).toBe(12);
     expect(companyValueScore(current)).toBeGreaterThan(0);
+  });
+});
+
+describe('Rebalanced constants (Phase G)', () => {
+  const fixedOpts = {
+    event: {
+      type: 'neutral' as const,
+      message: '',
+      demandMultiplier: 1,
+      costMultiplier: 1,
+    },
+    skipPriceVolatility: true,
+    rng: () => 0.5,
+  };
+
+  it('baseline: 5人・200個・80千円で営業利益がプラス帯', () => {
+    const state = createInitialState('基準工業', 'normal');
+    const { result } = runTurn(
+      state,
+      {
+        materialPurchase: 5_000,
+        productionQty: 200,
+        unitPrice: 80,
+        employeeChange: 0,
+        investments: [],
+      },
+      fixedOpts,
+    );
+    expect(result.pl.revenue).toBeGreaterThanOrEqual(14_000);
+    expect(result.pl.revenue).toBeLessThanOrEqual(19_000);
+    expect(result.pl.operatingProfit).toBeGreaterThan(1_000);
+    expect(result.pl.operatingProfit).toBeLessThan(6_000);
+  });
+
+  it('粗利率はおおむね 25-55%(労務・減価の吸収原価込み)', () => {
+    const state = createInitialState('粗利工業', 'normal');
+    const { result } = runTurn(
+      state,
+      {
+        materialPurchase: 5_000,
+        productionQty: 200,
+        unitPrice: 80,
+        employeeChange: 0,
+        investments: [],
+      },
+      fixedOpts,
+    );
+    const grossMargin = result.pl.grossProfit / result.pl.revenue;
+    expect(grossMargin).toBeGreaterThan(0.25);
+    expect(grossMargin).toBeLessThan(0.55);
+  });
+});
+
+describe('Investment effects (Phase G)', () => {
+  const fixedOpts = {
+    event: {
+      type: 'neutral' as const,
+      message: '',
+      demandMultiplier: 1,
+      costMultiplier: 1,
+    },
+    skipPriceVolatility: true,
+    rng: () => 0.5,
+  };
+
+  it('広告投資でブランド値が+15(減衰-2込みで+13以上)', () => {
+    const state = createInitialState('広告工業', 'normal');
+    const initialBrand = state.brandValue;
+    const { state: next } = runTurn(
+      state,
+      baseDecision({ investments: ['ad'] }),
+      fixedOpts,
+    );
+    expect(next.brandValue).toBeGreaterThanOrEqual(initialBrand + 13);
+    expect(next.brandValue).toBeLessThanOrEqual(CONSTANTS.BRAND_MAX);
+  });
+
+  it('広告しない期はブランドが-2減衰', () => {
+    const state = createInitialState('減衰工業', 'normal');
+    const { state: next } = runTurn(state, baseDecision(), fixedOpts);
+    expect(next.brandValue).toBe(state.brandValue - CONSTANTS.BRAND_DECAY_PER_TURN);
+  });
+
+  it('設備投資で生産能力が+30', () => {
+    const state = createInitialState('設備工業', 'normal');
+    const before = getProductionLimits(
+      state,
+      state.employees,
+      state.materialUnitCost,
+      state.materialInventory + 20_000,
+    ).max;
+    const { state: next } = runTurn(
+      state,
+      baseDecision({ investments: ['equipment'] }),
+      fixedOpts,
+    );
+    const after = getProductionLimits(
+      next,
+      next.employees,
+      next.materialUnitCost,
+      next.materialInventory + 20_000,
+    ).max;
+    expect(next.extraProductionCapacity).toBe(30);
+    expect(after - before).toBe(CONSTANTS.EQUIPMENT_BONUS_CAPACITY);
+  });
+
+  it('R&D投資で次期・次々期に材料費-10%が効き、その後消える', () => {
+    let withRd = createInitialState('研究工業', 'normal');
+    let withoutRd = createInitialState('対照工業', 'normal');
+
+    // 投資期: 効果はまだ効かない(rdBonusは期末に立つ)
+    ({ state: withRd } = runTurn(
+      withRd,
+      baseDecision({ investments: ['rd'] }),
+      fixedOpts,
+    ));
+    ({ state: withoutRd } = runTurn(withoutRd, baseDecision(), fixedOpts));
+    expect(withRd.rdBonus).toBe(CONSTANTS.RD_BONUS_TURNS);
+    expect(withRd.history[0]!.pl.cogs).toBe(withoutRd.history[0]!.pl.cogs);
+
+    // 次期: R&D効果あり → COGSが下がる
+    ({ state: withRd } = runTurn(withRd, baseDecision(), fixedOpts));
+    ({ state: withoutRd } = runTurn(withoutRd, baseDecision(), fixedOpts));
+    expect(withRd.rdBonus).toBe(1);
+    expect(withRd.history[1]!.pl.cogs).toBeLessThan(
+      withoutRd.history[1]!.pl.cogs,
+    );
+
+    // 次々期: まだ効果あり
+    ({ state: withRd } = runTurn(withRd, baseDecision(), fixedOpts));
+    ({ state: withoutRd } = runTurn(withoutRd, baseDecision(), fixedOpts));
+    expect(withRd.rdBonus).toBe(0);
+    expect(withRd.history[2]!.pl.cogs).toBeLessThan(
+      withoutRd.history[2]!.pl.cogs,
+    );
+
+    // その次の期: 効果消失
+    ({ state: withRd } = runTurn(withRd, baseDecision(), fixedOpts));
+    ({ state: withoutRd } = runTurn(withoutRd, baseDecision(), fixedOpts));
+    expect(withRd.history[3]!.pl.cogs).toBe(withoutRd.history[3]!.pl.cogs);
   });
 });

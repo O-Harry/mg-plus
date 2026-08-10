@@ -7,9 +7,9 @@ describe('createDefaultDecision', () => {
   it('前期の仕入・生産・価格を初期値として引き継ぐ', () => {
     const state = createInitialState('継承工業', 'normal');
     const prev: Decision = {
-      materialPurchase: 2_400,
+      materialPurchase: 5_000,
       productionQty: 150,
-      unitPrice: 10,
+      unitPrice: 90,
       employeeChange: 1,
       investments: ['ad'],
     };
@@ -60,8 +60,8 @@ describe('createDefaultDecision', () => {
     };
 
     const next = createDefaultDecision(afterTurn1);
-    expect(next.unitPrice).toBe(10);
-    expect(next.materialPurchase).toBe(2_400);
+    expect(next.unitPrice).toBe(90);
+    expect(next.materialPurchase).toBe(5_000);
     expect(next.productionQty).toBe(150);
     // 人員・投資は引き継がない
     expect(next.employeeChange).toBe(0);

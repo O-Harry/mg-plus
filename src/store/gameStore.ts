@@ -44,11 +44,17 @@ type GameStore = {
   lastDecision: Decision | null;
   savedAt: number | null;
   saveFlash: boolean;
+  /** お手本プレイ中（通常セーブと区別） */
+  demoMode: boolean;
 
   setView: (view: ViewState) => void;
   initGame: (name: string, difficulty: Difficulty) => void;
   startScenario: (scenarioId: ScenarioId) => void;
   beginScenarioPlay: () => void;
+  startDemoPlayback: (scenarioId: ScenarioId) => void;
+  executeDemoTurn: (decision: Decision) => void;
+  finishDemoAndPlay: () => void;
+  exitDemoPlayback: () => void;
   continueGame: () => void;
   executeTurn: (decision: Decision) => void;
   advanceToNextTurn: () => void;
@@ -87,6 +93,7 @@ export const useGameStore = create<GameStore>()(
       lastDecision: null,
       savedAt: null,
       saveFlash: false,
+      demoMode: false,
 
       clearSaveFlash: () => set({ saveFlash: false }),
 
@@ -100,6 +107,7 @@ export const useGameStore = create<GameStore>()(
               game,
               view: 'dashboard' as ViewState,
               lastDecision: emptyDecision(),
+              demoMode: false,
             },
             true,
           ),
@@ -116,6 +124,7 @@ export const useGameStore = create<GameStore>()(
               game,
               view: 'scenarioBriefing' as ViewState,
               lastDecision: emptyDecision(),
+              demoMode: false,
             },
             true,
           ),
@@ -125,7 +134,87 @@ export const useGameStore = create<GameStore>()(
       beginScenarioPlay: () => {
         const { game } = get();
         if (!game || game.mode !== 'scenario') return;
-        set({ view: 'decisions' });
+        set({ view: 'decisions', demoMode: false });
+      },
+
+      startDemoPlayback: (scenarioId) => {
+        const scenario = getScenarioById(scenarioId);
+        if (!scenario) return;
+        const game = createScenarioState(scenario);
+        set({
+          game,
+          view: 'demoPlayback' as ViewState,
+          lastDecision: emptyDecision(),
+          demoMode: true,
+          savedAt: Date.now(),
+          saveFlash: false,
+        });
+      },
+
+      executeDemoTurn: (decision) => {
+        const { game, demoMode } = get();
+        if (!game || !demoMode || game.gameOver) return;
+        if (game.history.length >= getMaxTurns(game)) return;
+
+        let state: GameState;
+        if (game.mode === 'scenario' && game.scenarioId) {
+          const scenario = getScenarioById(game.scenarioId);
+          const event = scenario?.scriptedEvents[game.currentTurn - 1];
+          state = runTurn(game, decision, {
+            event,
+            skipPriceVolatility: true,
+            rng: () => 0.5,
+          }).state;
+        } else {
+          state = runTurn(game, decision).state;
+        }
+
+        set({
+          game: state,
+          lastDecision: decision,
+          view: 'demoPlayback',
+          demoMode: true,
+          savedAt: Date.now(),
+          saveFlash: false,
+        });
+      },
+
+      finishDemoAndPlay: () => {
+        const id = get().game?.scenarioId;
+        if (!id) {
+          set({
+            view: 'scenarioSelect',
+            game: null,
+            demoMode: false,
+            lastDecision: null,
+          });
+          return;
+        }
+        const scenario = getScenarioById(id);
+        if (!scenario) return;
+        const game = createScenarioState(scenario);
+        set(
+          stamp(
+            {
+              game,
+              view: 'decisions' as ViewState,
+              lastDecision: emptyDecision(),
+              demoMode: false,
+            },
+            true,
+          ),
+        );
+      },
+
+      exitDemoPlayback: () => {
+        set({
+          view: 'scenarioSelect',
+          game: null,
+          lastDecision: null,
+          demoMode: false,
+          savedAt: Date.now(),
+          saveFlash: false,
+        });
       },
 
       continueGame: () => {
@@ -174,6 +263,7 @@ export const useGameStore = create<GameStore>()(
               game: state,
               lastDecision: decision,
               view: 'result' as ViewState,
+              demoMode: false,
             },
             true,
           ),
@@ -230,6 +320,7 @@ export const useGameStore = create<GameStore>()(
             view: 'title' as ViewState,
             game: null,
             lastDecision: null,
+            demoMode: false,
           }),
         );
       },
@@ -241,11 +332,14 @@ export const useGameStore = create<GameStore>()(
           lastDecision: null,
           savedAt: null,
           saveFlash: false,
+          demoMode: false,
         });
       },
 
       hasInProgressSave: () => {
-        const { game } = get();
+        const { game, demoMode } = get();
+        // お手本プレイは通常セーブとみなさない
+        if (demoMode) return false;
         return (
           game !== null &&
           !game.gameOver &&
@@ -270,22 +364,37 @@ export const useGameStore = create<GameStore>()(
       name: STORAGE_KEY,
       version: SAVE_VERSION,
       storage: createJSONStorage(() => localStorage),
-      partialize: (state) =>
-        ({
+      partialize: (state) => {
+        // デモ中は永続化しない（通常セーブを汚さない）
+        if (state.demoMode || state.view === 'demoPlayback') {
+          return {
+            view: 'scenarioSelect' as ViewState,
+            game: null,
+            lastDecision: null,
+            savedAt: state.savedAt,
+          } satisfies PersistedSlice;
+        }
+        return {
           view: state.view,
           game: state.game,
           lastDecision: state.lastDecision,
           savedAt: state.savedAt,
-        }) satisfies PersistedSlice,
+        } satisfies PersistedSlice;
+      },
       migrate: (persisted) => {
         try {
           const p = (persisted ?? {}) as Partial<PersistedSlice>;
           const game = normalizeGameState(p.game);
+          let view = normalizeView(p.view, game);
+          if (view === 'demoPlayback') {
+            view = 'scenarioSelect';
+          }
           return {
-            view: normalizeView(p.view, game),
-            game,
+            view,
+            game: view === 'scenarioSelect' && !game ? null : game,
             lastDecision: normalizeDecision(p.lastDecision),
             savedAt: typeof p.savedAt === 'number' ? p.savedAt : null,
+            demoMode: false,
           };
         } catch (e) {
           console.warn('MG+ save migrate failed', e);
@@ -294,6 +403,7 @@ export const useGameStore = create<GameStore>()(
             game: null,
             lastDecision: null,
             savedAt: null,
+            demoMode: false,
           };
         }
       },
@@ -301,13 +411,18 @@ export const useGameStore = create<GameStore>()(
         try {
           const p = (persisted ?? {}) as Partial<PersistedSlice>;
           const game = normalizeGameState(p.game) ?? current.game;
+          let view = normalizeView(p.view ?? current.view, game);
+          if (view === 'demoPlayback') {
+            view = 'scenarioSelect';
+          }
           return {
             ...current,
             game,
-            view: normalizeView(p.view ?? current.view, game),
+            view,
             lastDecision:
               normalizeDecision(p.lastDecision) ?? current.lastDecision,
             savedAt: p.savedAt ?? current.savedAt,
+            demoMode: false,
           };
         } catch (e) {
           console.warn('MG+ save merge failed', e);

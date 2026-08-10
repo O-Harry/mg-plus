@@ -13,6 +13,7 @@ const VIEWS: ViewState[] = [
   'howto',
   'scenarioSelect',
   'scenarioBriefing',
+  'demoPlayback',
   'dashboard',
   'decisions',
   'result',
@@ -92,6 +93,8 @@ export function normalizeView(view: unknown, game: GameState | null): ViewState 
     ) {
       return v;
     }
+    // デモ途中のセーブは選択画面へ戻す
+    if (v === 'demoPlayback') return 'scenarioSelect';
     return 'title';
   }
   if (game.gameOver && (v === 'dashboard' || v === 'decisions')) {

@@ -3,6 +3,7 @@ import { AppShell } from './components/AppShell';
 import { SaveToast } from './components/SaveToast';
 import { DashboardScreen } from './screens/DashboardScreen';
 import { DecisionsScreen } from './screens/DecisionsScreen';
+import { DemoPlaybackScreen } from './screens/DemoPlaybackScreen';
 import { FinalScreen } from './screens/FinalScreen';
 import { GameOverScreen } from './screens/GameOverScreen';
 import { HowToPlayScreen } from './screens/HowToPlayScreen';
@@ -80,6 +81,8 @@ function renderScreen(view: ViewState) {
       return <ScenarioSelectScreen />;
     case 'scenarioBriefing':
       return <ScenarioBriefingScreen />;
+    case 'demoPlayback':
+      return <DemoPlaybackScreen />;
     case 'dashboard':
       return <DashboardScreen />;
     case 'decisions':

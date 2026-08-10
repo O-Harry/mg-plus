@@ -113,17 +113,21 @@ export function getProductionLimits(
   materialInventory: number,
 ): { labor: number; equipment: number; material: number; max: number } {
   const labor = employees * CONSTANTS.EMPLOYEE_CAPACITY;
-  const equipment =
-    Math.floor(netEquipment(state) * CONSTANTS.EQUIPMENT_CAPACITY_RATIO) +
-    state.extraProductionCapacity;
+  const byEquipment = Math.floor(
+    netEquipment(state) * CONSTANTS.EQUIPMENT_CAPACITY_RATIO,
+  );
+  const bonus = state.extraProductionCapacity;
+  const equipment = byEquipment + bonus;
   const material = Math.floor(
     materialInventory / Math.max(materialUnitCost, 0.1),
   );
+  // 人員・設備のボトルネックに設備投資ボーナスを加算し、材料で最終制限
+  const withBonus = Math.min(labor, byEquipment) + bonus;
   return {
     labor,
     equipment,
     material,
-    max: Math.max(0, Math.min(labor, equipment, material)),
+    max: Math.max(0, Math.min(withBonus, material)),
   };
 }
 
@@ -303,7 +307,7 @@ export function runTurn(
     cash += cashSales;
   }
 
-  // 5. 販管費 (PL上は広告・研究も含める。現金は固定を先に、投資分は後で)
+  // 5. 販管費 (PL上は広告・研究・設備投資費も含める。現金は固定を先に、投資分は後で)
   const fixedSga = CONSTANTS.FIXED_SGA_BASE;
   const adExpense = investments.includes('ad')
     ? CONSTANTS.INVESTMENT_COST_EACH
@@ -311,8 +315,12 @@ export function runTurn(
   const rdExpense = investments.includes('rd')
     ? CONSTANTS.INVESTMENT_COST_EACH
     : 0;
+  const equipmentExpense = investments.includes('equipment')
+    ? CONSTANTS.INVESTMENT_COST_EACH
+    : 0;
   const didAdvertise = adExpense > 0;
-  const sga = fixedSga + adExpense + rdExpense + periodCostInSga;
+  const sga =
+    fixedSga + adExpense + rdExpense + equipmentExpense + periodCostInSga;
   cash -= fixedSga;
 
   // 7. 支払利息 (設備投資の借入増の前)
@@ -345,19 +353,13 @@ export function runTurn(
     } else if (inv === 'rd') {
       cash -= CONSTANTS.INVESTMENT_COST_EACH;
       investingOutflow += CONSTANTS.INVESTMENT_COST_EACH;
-      rdPending = CONSTANTS.RD_BONUS_TURNS;
+      // 次期から RD_BONUS_TURNS 期分、材料費 -10%
+      rdPending = CONSTANTS.RD_PENDING_TURNS;
     } else if (inv === 'equipment') {
-      // 頭金500 + 長期借入29,500 で設備30,000取得 → BS整合
-      const down = CONSTANTS.INVESTMENT_COST_EACH;
-      const amount = CONSTANTS.EQUIPMENT_INVESTMENT_AMOUNT;
-      const financed = amount - down;
-      cash -= down;
-      equipment += amount;
-      longTermDebt += financed;
-      investingOutflow += down;
-      financingInflow += financed;
-      const fromBook = Math.floor(amount * CONSTANTS.EQUIPMENT_CAPACITY_RATIO);
-      extraProductionCapacity += Math.max(0, 300 - fromBook);
+      // 現金500で生産能力+30(恒久)。BS上の設備資産は増やさない
+      cash -= CONSTANTS.INVESTMENT_COST_EACH;
+      investingOutflow += CONSTANTS.INVESTMENT_COST_EACH;
+      extraProductionCapacity += CONSTANTS.EQUIPMENT_BONUS_CAPACITY;
     }
   }
 

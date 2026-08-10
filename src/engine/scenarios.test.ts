@@ -26,9 +26,9 @@ describe('scenarios', () => {
       const { state: next, result } = runTurn(
         state,
         {
-          materialPurchase: 2_000,
+          materialPurchase: 6_000,
           productionQty: 180,
-          unitPrice: 10,
+          unitPrice: 96,
           employeeChange: 0,
           investments: [],
         },

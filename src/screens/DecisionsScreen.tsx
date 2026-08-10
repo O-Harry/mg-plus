@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { AdvisorOverlay } from '../components/AdvisorOverlay';
 import { DecisionCard } from '../components/DecisionCard';
 import { NumericInputModal } from '../components/NumericInputModal';
+import { RecommendationModal } from '../components/RecommendationModal';
 import { StickyFooter } from '../components/StickyFooter';
 import { TouchSlider } from '../components/TouchSlider';
 import { CONSTANTS } from '../engine/constants';
@@ -9,10 +10,32 @@ import {
   createDefaultDecision,
   estimateDecisionPreview,
 } from '../engine/preview';
+import { getRecommendation } from '../engine/recommendations';
 import { getScenarioById } from '../engine/scenarios';
 import { useGameStore } from '../store/gameStore';
 import type { Decision, Investment } from '../types/game';
 import { formatNumber, formatYen } from '../utils/format';
+
+type RecField =
+  | 'materialPurchase'
+  | 'productionQty'
+  | 'unitPrice'
+  | 'employeeChange'
+  | 'investments';
+
+const REC_FIELD_LABELS: Record<RecField, string> = {
+  materialPurchase: '材料仕入額',
+  productionQty: '生産量',
+  unitPrice: '販売価格',
+  employeeChange: '人員調整',
+  investments: '追加投資',
+};
+
+const INVEST_LABELS: Record<Investment, string> = {
+  ad: '広告',
+  equipment: '設備',
+  rd: '研究開発',
+};
 
 type NumericField = 'materialPurchase' | 'productionQty' | 'unitPrice';
 
@@ -22,8 +45,8 @@ const INVESTMENT_OPTIONS: {
   desc: string;
 }[] = [
   { id: 'ad', label: '広告', desc: 'ブランド+15 / 需要押し上げ' },
-  { id: 'equipment', label: '設備', desc: '生産能力+300 / 頭金500' },
-  { id: 'rd', label: '研究開発', desc: '次々期から原価-10%（2期）' },
+  { id: 'equipment', label: '設備', desc: '生産能力+30 / 500千円' },
+  { id: 'rd', label: '研究開発', desc: '次期から原価-10%（2期）' },
 ];
 
 function clampDecision(d: Decision, maxPurchase: number, maxProduction: number, priceMin: number, priceMax: number): Decision {
@@ -44,6 +67,8 @@ export function DecisionsScreen() {
   const [decision, setDecision] = useState<Decision | null>(null);
   const [numericField, setNumericField] = useState<NumericField | null>(null);
   const [advisorOpen, setAdvisorOpen] = useState(false);
+  const [showRecommendations, setShowRecommendations] = useState(false);
+  const [modalField, setModalField] = useState<RecField | null>(null);
 
   useEffect(() => {
     if (game) {
@@ -75,7 +100,33 @@ export function DecisionsScreen() {
     );
   }, [game]);
 
+  const recommendation = useMemo(
+    () => (game ? getRecommendation(game) : null),
+    [game],
+  );
+
   if (!game || !decision || !preview) return null;
+
+  const rec = showRecommendations ? recommendation : null;
+
+  const formatRecValue = (field: RecField): string => {
+    if (!recommendation) return '';
+    const d = recommendation.decision;
+    switch (field) {
+      case 'materialPurchase':
+        return `${formatNumber(d.materialPurchase)}千円`;
+      case 'productionQty':
+        return `${formatNumber(d.productionQty)}個`;
+      case 'unitPrice':
+        return `${d.unitPrice.toFixed(1)}千円`;
+      case 'employeeChange':
+        return `${d.employeeChange >= 0 ? '+' : ''}${d.employeeChange}人`;
+      case 'investments':
+        return d.investments.length > 0
+          ? d.investments.map((i) => INVEST_LABELS[i]).join('・')
+          : 'なし';
+    }
+  };
 
   const update = (partial: Partial<Decision>) => {
     setDecision((prev) => {
@@ -166,12 +217,28 @@ export function DecisionsScreen() {
           {formatYen(game.materialInventory)}
         </p>
 
+        {game.mode === 'scenario' && recommendation && (
+          <label className="flex min-h-[44px] items-center gap-2 rounded-xl border border-orange-200 bg-orange-50/60 px-3 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={showRecommendations}
+              onChange={(e) => setShowRecommendations(e.target.checked)}
+              className="h-4 w-4 accent-mg-accent"
+            />
+            クロピーの推奨値を表示
+          </label>
+        )}
+
         <DecisionCard
           title="1. 材料仕入額"
           subtitle="次期の生産余力のもと。現金の80%まで"
           valueLabel={`${formatNumber(decision.materialPurchase)}千円`}
           hint={`即払い約${formatNumber(Math.round(decision.materialPurchase * 0.8))}千円 / 買掛20%`}
           onValueClick={() => setNumericField('materialPurchase')}
+          recommended={
+            rec ? formatRecValue('materialPurchase') : undefined
+          }
+          onRecommendationTap={() => setModalField('materialPurchase')}
         >
           <TouchSlider
             min={0}
@@ -193,6 +260,8 @@ export function DecisionsScreen() {
           valueLabel={`${formatNumber(decision.productionQty)}個`}
           hint={`上限 人員${preview.productionCap.labor} / 設備${preview.productionCap.equipment} / 材料${preview.productionCap.material}`}
           onValueClick={() => setNumericField('productionQty')}
+          recommended={rec ? formatRecValue('productionQty') : undefined}
+          onRecommendationTap={() => setModalField('productionQty')}
         >
           <TouchSlider
             min={0}
@@ -214,6 +283,8 @@ export function DecisionsScreen() {
           valueLabel={`${decision.unitPrice.toFixed(1)}千円`}
           hint={`予想需要 約${formatNumber(preview.expectedDemand)}個（高いほど減）`}
           onValueClick={() => setNumericField('unitPrice')}
+          recommended={rec ? formatRecValue('unitPrice') : undefined}
+          onRecommendationTap={() => setModalField('unitPrice')}
         >
           <TouchSlider
             min={preview.priceMin}
@@ -234,6 +305,8 @@ export function DecisionsScreen() {
           subtitle={`現在 ${game.employees}人 → ${preview.employeesAfter}人`}
           valueLabel={`${decision.employeeChange >= 0 ? '+' : ''}${decision.employeeChange}人`}
           hint={`人件費 ${formatNumber(preview.employeesAfter * CONSTANTS.EMPLOYEE_SALARY_PER_TURN)}千円/期`}
+          recommended={rec ? formatRecValue('employeeChange') : undefined}
+          onRecommendationTap={() => setModalField('employeeChange')}
         >
           <div className="flex items-center justify-center gap-4">
             <button
@@ -282,6 +355,8 @@ export function DecisionsScreen() {
               ? `投資支出 ${formatNumber(preview.investmentCash)}千円`
               : '将来の成長に使うかどうか'
           }
+          recommended={rec ? formatRecValue('investments') : undefined}
+          onRecommendationTap={() => setModalField('investments')}
         >
           <div className="flex flex-col gap-2">
             {INVESTMENT_OPTIONS.map((opt) => {
@@ -360,6 +435,17 @@ export function DecisionsScreen() {
         onClose={() => setNumericField(null)}
         onConfirm={(v) => update({ unitPrice: Math.round(v * 10) / 10 })}
       />
+
+      {modalField && recommendation && (
+        <RecommendationModal
+          open
+          onClose={() => setModalField(null)}
+          fieldLabel={REC_FIELD_LABELS[modalField]}
+          recommendedValue={formatRecValue(modalField)}
+          reasoning={recommendation.reasoning}
+          keyPoint={recommendation.keyPoint}
+        />
+      )}
 
       <StickyFooter
         summary={
